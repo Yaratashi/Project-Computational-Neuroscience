@@ -57,9 +57,11 @@ class STDP_Network:
 
         # Initialize weights using this distribution, scaled by the desired maximum weight
         self.ff_weights = np.random.uniform(0.6, 1.0, (self.num_inputs, self.num_neurons)) * weight_distribution[:, None]
+        self.ff_weights[:, 100:201] = 0
 
         # Create and enforce sparsity mask (20% chance) on feedforward connections:
         self.mask = (np.random.rand(num_inputs, num_neurons) < 0.2).astype(int)
+        self.mask[:, 100:201] = 0
         self.ff_weights *= self.mask
 
         # Initialize recurrent weights (network-to-network); these start at 0.
@@ -134,6 +136,10 @@ class STDP_Network:
     def update_membrane_potential(self, pre_spikes_feed, pre_spikes_recur):
         """
         Update the membrane potential of each network neuron (LIF dynamics).
+        Includes:
+        - Exponential decay of excitatory conductance g_ex
+        - Updates from presynaptic spikes (both feedforward and recurrent)
+        - LIF membrane potential update
         """
         # Decay excitatory conductance
         self.g_ex *= np.exp(-self.dt / self.tau_s)
