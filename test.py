@@ -1,6 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
-
+from scipy.ndimage import uniform_filter1d
 
 class STDP_Network:
     def __init__(self, num_neurons=250, num_poisson=250, num_inputs=1000, dt=0.1,
@@ -74,6 +74,7 @@ class STDP_Network:
         self.mask = (np.random.rand(num_inputs, num_neurons) < 0.2).astype(int)
         self.ff_weights *= self.mask
 
+        '''
         # Initialize recurrent weights (network-to-network); these start at 0.
         self.recur_weights = np.zeros((num_neurons, num_neurons))
         for j in range(num_neurons):
@@ -81,6 +82,9 @@ class STDP_Network:
                 k_mod = k % num_neurons  # Apply periodic boundary condition
                 if k_mod != j:  # Ensure no self-connections
                     self.recur_weights[j, k_mod] = 0  # Initial recurrent weight set to zero
+        '''
+        self.recur_weights = np.random.uniform(0, 0.5 * self.g_max, (num_neurons, num_neurons))
+        np.fill_diagonal(self.recur_weights, 0)
 
         # Poisson neurons: here we use one per network neuron.
         # Their spikes will directly update the excitatory conductance g_ex.
@@ -188,14 +192,14 @@ class STDP_Network:
         print("Pre-trace (sample):", self.pre_trace_feed[:10])  # Print first 10 values
 
         for i in np.where(pre_spikes)[0]:
-            self.ff_weights[i, :] -= self.B_ff * self.A_minus_ff * self.post_trace_feed * (self.mask[i, :] == 1)
+            self.ff_weights[i, :] -= self.B_ff * self.A_minus_ff * self.post_trace_feed[i, :] * (self.mask[i, :] == 1)
         self.ff_weights *= self.mask  # Enforce sparsity
         self.ff_weights = np.clip(self.ff_weights, 0, self.g_max)
 
     def update_post_feedforward(self, post_spikes):
         print("Updating post feedforward weights...")
         print("Post-spikes count:", np.sum(post_spikes))
-        self.post_trace_feed[post_spikes] += 1
+        self.post_trace_feed[:, post_spikes] += 1
         print("Post-trace (sample):", self.post_trace_feed[:10])  # Print first 10 values
 
         for j in np.where(post_spikes)[0]:
