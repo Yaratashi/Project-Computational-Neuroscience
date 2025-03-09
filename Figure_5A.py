@@ -31,7 +31,6 @@ class STDP_Network:
         self.R0 = R0
         self.R1 = R1
         self.sigma = sigma
-
         # Feedforward learning rates and scaling factor
         self.A_plus_ff = A_plus_ff
         self.A_minus_ff = A_minus_ff
@@ -45,6 +44,10 @@ class STDP_Network:
 
         self.g_max = g_max
 
+        # Initialize feedforward weights: shape (num_inputs, num_neurons)
+        # self.ff_weights = np.random.rand(num_inputs, num_neurons) * g_max
+        # self.ff_weights = np.random.uniform(0.4, 1.0, (num_inputs, num_neurons))  # Stronger initial weights
+        # Initialize feedforward weights: shape (num_inputs, num_neurons)
         # Define the center point (neuron 700)
         center_neuron = 700
 
@@ -93,7 +96,7 @@ class STDP_Network:
         self.post_trace_recur *= np.exp(-self.dt / self.tau_post)
 
     def update_poisson_input(self):
-        """ Each network neuron receives input from one dedicated Poisson neuron """
+        """Each network neuron receives input from one dedicated Poisson neuron"""
         poisson_spikes = np.random.rand(self.num_neurons) < (self.poisson_rate * (self.dt / 1000.0))
         self.g_ex += 0.116 * poisson_spikes.astype(int)
 
@@ -116,6 +119,7 @@ class STDP_Network:
             spike_array[t, :] = (np.random.rand(self.num_inputs) < p).astype(int)
 
         return spike_array.tolist()
+
     '''
     def ramp_up_stimulus(self, duration=30):
         spike_array = []
@@ -134,63 +138,55 @@ class STDP_Network:
 
         return np.array(spike_array)
     '''
+
     def update_membrane_potential(self, pre_spikes_feed, pre_spikes_recur):
-        """
-        Update the membrane potential of each network neuron (LIF dynamics).
-        """
+        """Update the membrane potential of each network neuron (LIF dynamics)."""
         self.g_ex *= np.exp(-self.dt / self.tau_s)
+        self.g_ex += np.dot(pre_spikes_feed, self.ff_weights)  # Input spikes to Network neurons
+        self.g_ex += np.dot(pre_spikes_recur, self.recur_weights)  # Recurrent spikes to Network neurons
 
-        if len(pre_spikes_feed.shape) > 1:
-            pre_spikes_feed = pre_spikes_feed[-1]  # Take only the last timestep
-        if len(pre_spikes_recur.shape) > 1:
-            pre_spikes_recur = pre_spikes_recur[-1]  # Take only the last timestep
-
-        self.g_ex += np.dot(pre_spikes_feed, self.ff_weights)
-        self.g_ex += np.dot(pre_spikes_recur, self.recur_weights)
-
+        # Update membrane potential using LIF dynamics
         dV = (1 / self.tau_m) * (self.V_rest - self.V_mem * (1 + self.g_ex))
         self.V_mem += dV
 
+        # Check for spikes
         spike = self.V_mem >= self.V_thresh
+
+        # Reset spiking neurons
         self.V_mem[spike] = self.V_reset
-        self.spike_train[spike] = 1
+        self.spike_train[spike] = 1  # Mark spike occurrence
 
     def update_feedforward_weights(self, pre_spikes, post_spikes):
-        """
-        Update feedforward weights based on STDP.
-        """
-        # Initialize matrices to record changes
+        """Update feedforward synaptic weights based on STDP rules"""
+        # Update pre-synaptic trace for neurons that spiked
         pre_depression = np.zeros_like(self.ff_weights)
         post_potentiation = np.zeros_like(self.ff_weights)
-
-        # Update pre-synaptic trace for neurons that spiked
         self.pre_trace_feed[pre_spikes] += 1
 
-        # STDP Depression: For each presynaptic spike, subtract based on the corresponding post-trace.
-        for i in np.where(pre_spikes)[0]:
+        # Apply STDP depression for pre-synaptic spikes
+        for i in np.where(pre_spikes)[0]:  # Loop through presynaptic neurons that spiked
             delta = self.g_max * self.B_ff * self.A_minus_ff * self.post_trace_feed[i, :]
             pre_depression[i, :] = delta
             self.ff_weights[i, :] -= delta
 
         # Update post-synaptic trace for neurons that spiked
-        self.post_trace_feed[:, post_spikes] += 1
+        for j in np.where(post_spikes)[0]:  # Iterate over postsynaptic neurons that spiked
+            self.post_trace_feed[:, j] += 1  # Update post-synaptic trace for all input neurons
 
-        # STDP Potentiation: For each postsynaptic spike, add based on the corresponding pre-trace.
-        for j in np.where(post_spikes)[0]:
+        # Apply STDP potentiation for post-synaptic spikes
+        for j in np.where(post_spikes)[0]:  # Iterate over postsynaptic neurons that spiked
             delta = self.g_max * self.B_ff * self.A_plus_ff * self.pre_trace_feed[:, j]
             post_potentiation[:, j] = delta
             self.ff_weights[:, j] += delta
 
-        # Enforce sparsity mask and clip weights to allowed range
-        self.ff_weights *= self.mask
+        # Enforce sparsity mask and clip values to [0, g_max]
         self.ff_weights = np.clip(self.ff_weights, 0, self.g_max)
+        self.ff_weights *= self.mask
 
         return pre_depression, post_potentiation
 
     def update_recurrent_weights(self, pre_spikes, post_spikes):
-        """
-        Update recurrent weights based on pre and post spikes.
-        """
+        """Update recurrent weights based on pre and post spikes."""
         # Initialize matrices to record changes
         pre_depression = np.zeros_like(self.recur_weights)
         post_potentiation = np.zeros_like(self.recur_weights)
@@ -201,7 +197,7 @@ class STDP_Network:
         # STDP Depression: For each presynaptic spike, subtract based on the corresponding post-trace.
         for i in np.where(pre_spikes)[0]:
             # Use only the i-th row of post_trace_recur
-            delta = self.B_recur * self.A_minus_recur * self.post_trace_recur[i, :]
+            delta = self.g_max * self.B_recur * self.A_minus_recur * self.post_trace_recur[i, :]
             pre_depression[i, :] = delta
             self.recur_weights[i, :] -= delta
 
@@ -211,7 +207,7 @@ class STDP_Network:
         # STDP Potentiation: For each postsynaptic spike, add based on the corresponding pre-trace.
         for j in np.where(post_spikes)[0]:
             # Use only the j-th column of pre_trace_recur
-            delta = self.B_recur * self.A_plus_recur * self.pre_trace_recur[:, j]
+            delta = self.g_max * self.B_recur * self.A_plus_recur * self.pre_trace_recur[:, j]
             post_potentiation[:, j] = delta
             self.recur_weights[:, j] += delta
 
@@ -220,33 +216,32 @@ class STDP_Network:
 
         return pre_depression, post_potentiation
 
-    def simulate(self, T=100, feed_pre_times=[1, 3, 7], feed_post_times=[2, 5, 10],
-                 recur_pre_times=[60, 140], recur_post_times=[65, 150]):
+    def simulate(self, T=1000, feed_pre_times=[1, 3, 7], feed_post_times=[2, 5, 10], recur_pre_times=[60, 140], recur_post_times=[65, 150]):
         """
         Run the simulation for T time steps.
         """
         weights_history_ff = []  # Track feedforward weights over time
         weights_history_recur = []  # Track recurrent weights over time
         network_spike_history = []  # Record network spikes over time
-        recur_depression_history = []
-        recur_potentiation_history = []
+        recur_potentiation_history = []  # Post-synaptic (potentiation) contributions history
+        recur_depression_history = []  # Pre-synaptic (depression) contributions history
 
         input_stimulus = []
         for t in tqdm(range(T)):
-            if not input_stimulus:
+            if len(input_stimulus) == 0:
                 input_stimulus = np.array(self.generate_stimulus())
 
             self.decay_traces()
             self.update_poisson_input()
-            input_spikes = self.generate_stimulus()
+            input_spikes = self.generate_stimulus()[0]
 
             self.spike_train.fill(0)  # Reset spike train before each time step
 
             pre_spikes_feed = np.array(input_spikes, dtype=bool)
             pre_spikes_recur = self.spike_train.astype(bool)
 
+            # Update membrane potentials with proper conductance dynamics
             self.update_membrane_potential(pre_spikes_feed, pre_spikes_recur)
-            self.update_membrane_potential(pre_spikes_feed, np.zeros(self.num_neurons, dtype=bool))
             post_spikes = self.spike_train.astype(bool)
             post_spikes_recurrent = self.spike_train.astype(bool)
 
@@ -261,21 +256,24 @@ class STDP_Network:
 
             # Store weight history
             weights_history_ff.append(self.ff_weights.copy())
-            network_spike_history.append(self.spike_train.copy())
             weights_history_recur.append(self.recur_weights.copy())
 
         return (np.array(weights_history_ff),
-                np.array(network_spike_history))
+                np.array(weights_history_recur),
+                np.array(network_spike_history),
+                np.array(recur_depression_history),
+                np.array(recur_potentiation_history))
 
 # Run the simulation
 network = STDP_Network()
-ff_history, net_spike_history = network.simulate()
+ff_history, recur_history, net_spike_history, recur_depression_history, potentiation_history = network.simulate()
 
 spike_history = np.array(network.generate_stimulus())
 spike_times_list = [np.where(spike_history[:, neuron] == 1)[0] for neuron in range(spike_history.shape[1])]
+stimulus_spike_train = network.ramp_up_stimulus(duration=30)
 network_spike_times_list = [np.where(net_spike_history[:, neuron] == 1)[0] for neuron in range(net_spike_history.shape[1])]
 
-# eventplot input
+# input spikes
 plt.figure(figsize=(10, 6))
 plt.eventplot(spike_times_list, colors="black")
 plt.xlabel("Time (ms)")
@@ -283,7 +281,7 @@ plt.ylabel("Input Neuron")
 plt.title("Spike Train Event Plot of Input neurons")
 plt.show()
 
-# eventplot network neurons
+# network spikes
 plt.figure(figsize=(10, 6))
 plt.eventplot(network_spike_times_list, colors="black")
 plt.xlabel("Time (ms)")
@@ -301,7 +299,7 @@ plt.title("Final Feedforward Synaptic Weight Distribution")
 plt.show()
 
 plt.figure(figsize=(8, 6))
-plt.imshow(weights_history_recur[-1], aspect='auto', cmap='gray_r', extent=[0, network.num_neurons, 0, network.num_neurons])
+plt.imshow(recur_history[-1], aspect='auto', cmap='gray_r', extent=[0, network.num_neurons, 0, network.num_neurons])
 plt.colorbar(label="Recurrent Weight Strength")
 plt.xlabel("Postsynaptic Neuron")
 plt.ylabel("Presynaptic Neuron")
