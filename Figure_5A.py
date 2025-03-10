@@ -161,9 +161,8 @@ class STDP_Network:
         # Update pre-synaptic trace for neurons that spiked
         pre_depression = np.zeros_like(self.ff_weights)
         post_potentiation = np.zeros_like(self.ff_weights)
+
         self.pre_trace_feed[pre_spikes] += 1
-        #tau=20
-        #self.tau = tau  # Zeitkonstante für STDP
 
         # Apply STDP depression for pre-synaptic spikes
         for i in np.where(pre_spikes)[0]:  # Loop through presynaptic neurons that spiked
@@ -173,8 +172,7 @@ class STDP_Network:
             self.ff_weights[i, :] -= delta
 
         # Update post-synaptic trace for neurons that spiked
-        for j in np.where(post_spikes)[0]:  # Iterate over postsynaptic neurons that spiked
-            self.post_trace_feed[:, j] += 1  # Update post-synaptic trace for all input neurons
+        self.post_trace_feed[:, post_spikes] += 1
 
         # Apply STDP potentiation for post-synaptic spikes
         for j in np.where(post_spikes)[0]:  # Iterate over postsynaptic neurons that spiked
@@ -185,7 +183,6 @@ class STDP_Network:
 
         # Enforce sparsity mask and clip values to [0, g_max]
         self.ff_weights = np.clip(self.ff_weights, 0, self.g_max)
-        self.ff_weights *= self.mask
 
         return pre_depression, post_potentiation
 
@@ -238,7 +235,7 @@ class STDP_Network:
             if t < ramp_up_time:
                 input_spikes = ramp_stimulus[stimulus_index]
                 stimulus_index += 1
-            else:         
+            else:
                 if len(input_stimulus) == 0:
                     input_stimulus = np.array(self.generate_stimulus())
                     input_spikes = input_stimulus[0]
