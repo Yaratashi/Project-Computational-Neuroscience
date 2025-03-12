@@ -235,7 +235,6 @@ class STDP_Network:
         return pre_depression, post_potentiation
 
     def simulate(self, T=1000, ramp_up_time=30):
-    def simulate(self, T=1000, ramp_up_time=30):
         """
         Run the simulation for T time steps.
         """
