@@ -242,14 +242,12 @@ class STDP_Network:
             self.update_feedforward_weights(pre_spikes_feed, post_spikes)
 
         for t in tqdm(range(ramp_up_time*self.num_inputs)):
+            network_spike_history.append(self.spike_train.copy())
             input_spikes = ramp_stimulus[t]
             self.spike_train.fill(0)
             pre_spikes_feed = np.array(input_spikes, dtype=bool)
             pre_spikes_recur = self.spike_train.astype(bool)
-
             # all_spikes.append(self.spike_train.copy())
-            network_spike_history.append(self.spike_train.copy())
-
             self.update_membrane_potential(pre_spikes_feed, pre_spikes_recur)
 
         # return (all_spikes)
