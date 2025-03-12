@@ -233,7 +233,7 @@ class STDP_Network:
             # Update membrane potentials with proper conductance dynamics
             self.update_membrane_potential(pre_spikes_feed, pre_spikes_recur)
 
-            network_spike_history.append(self.spike_train.copy())
+            #network_spike_history.append(self.spike_train.copy())
 
             post_spikes = self.spike_train.astype(bool)
             post_spikes_recurrent = self.spike_train.astype(bool)
