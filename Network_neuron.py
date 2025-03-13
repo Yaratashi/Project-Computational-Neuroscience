@@ -5,7 +5,7 @@ from scipy.ndimage import gaussian_filter1d
 
 
 class STDP_Network:
-    def __init__(self, num_neurons=1, num_poisson=250, num_inputs=1000, dt=0.1,
+    def __init__(self, num_neurons=10, num_poisson=250, num_inputs=1000, dt=0.1,
                  tau_pre=20.0, tau_post=20.0, tau_m=20.0, V_rest=-74.0, V_reset=-60.0,
                  V_thresh=-54.0, C_m=0.9, g_leak=0.2, tau_s=5.0,
                  A_plus_ff=0.005, A_minus_ff=0.005, A_plus_recur=0.001, A_minus_recur=0.001,
@@ -48,11 +48,11 @@ class STDP_Network:
 
         self.ff_weights = np.random.uniform(0, self.g_max,
                                             size=(self.num_inputs, self.num_neurons))  # * weight_distribution[:, None]
-        self.ff_weights[:, 100:201] = 0
+        #self.ff_weights[:, 100:201] = 0
 
         # Create and enforce sparsity mask (20% chance) on feedforward connections:
         self.mask = (np.random.rand(num_inputs, num_neurons) < 0.2).astype(int)
-        self.mask[:, 100:201] = 0
+        #self.mask[:, 100:201] = 0
         self.ff_weights *= self.mask
 
         # Initialize recurrent weight matrix (network-to-network); these start at 0.
@@ -166,7 +166,7 @@ class STDP_Network:
         # Apply STDP potentiation for post-synaptic spikes
         for j in np.where(post_spikes)[0]:  # Iterate over postsynaptic neurons that spiked
             # stdp_factor = np.exp(-self.pre_trace_feed / self.tau)
-            delta = self.g_max * self.B_ff * self.A_plus_ff * self.pre_trace_feed[:, j]  # * stdp_factor
+            delta = self.g_max * self.B_ff * self.A_plus_ff * self.pre_trace_feed[:, j]  
             post_potentiation[:, j] = delta
             self.ff_weights[:, j] += delta
 
@@ -208,7 +208,7 @@ class STDP_Network:
 
         return pre_depression, post_potentiation
 
-    def simulate(self, T=3000000, ramp_up_time=50):
+    def simulate(self, T=1000000, ramp_up_time=50):
         """
         Run the simulation for T time steps.
         """
@@ -240,16 +240,17 @@ class STDP_Network:
 
             # Update feedforward weights
             self.update_feedforward_weights(pre_spikes_feed, post_spikes)
+    
+            # Update recurrent weights and capture the contributions
+            pre_dep, post_pot = self.update_recurrent_weights(post_spikes, post_spikes_recurrent)
 
         for t in tqdm(range(ramp_up_time*self.num_inputs)):
+            network_spike_history.append(self.spike_train.copy())
             input_spikes = ramp_stimulus[t]
             self.spike_train.fill(0)
             pre_spikes_feed = np.array(input_spikes, dtype=bool)
             pre_spikes_recur = self.spike_train.astype(bool)
-
             # all_spikes.append(self.spike_train.copy())
-            network_spike_history.append(self.spike_train.copy())
-
             self.update_membrane_potential(pre_spikes_feed, pre_spikes_recur)
 
         # return (all_spikes)
@@ -344,4 +345,3 @@ plt.xlabel("Time (ms)")
 plt.ylabel("Input Neuron")
 plt.title("Spike Train Event Plot of Input neurons")
 plt.show()
-
